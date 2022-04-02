@@ -10,8 +10,7 @@ load_dotenv()
 
 token = os.environ["TELEGRAM_BOT_TOKEN"]
 
-bot = telebot.TeleBot(token,
-                      parse_mode=None)  # You can set parse_mode by default. HTML or MARKDOWN
+bot = telebot.TeleBot(token, parse_mode=None)
 bot.delete_webhook()
 
 
@@ -30,18 +29,31 @@ def process(message):
     bot.send_message(message.chat.id, "Would you like to generate a QR Code or scan a QR Code?", reply_markup=markup)
 
 
+@bot.message_handler(commands=['generate'])
+def generate_command(message):
+    sent = bot.send_message(message.chat.id, "Please send me a link")
+    bot.register_next_step_handler(sent, generate_qr_code)
+
+
+@bot.message_handler(commands=['scan'])
+def scan_command(message):
+    sent = bot.send_message(message.chat.id, "Please send me a picture")
+    bot.register_next_step_handler(sent, scan_qr_code)
+
+
 @bot.callback_query_handler(func=lambda call: True)
 def callback_worker(call):
     bot.edit_message_reply_markup(call.message.chat.id, call.message.id, inline_message_id=None)
     if call.data == '0':
-        sent = bot.send_message(call.message.chat.id, "Please send me a link")
-        bot.register_next_step_handler(sent, generate_qr_code)
+        generate_command(call.message)
     else:
-        sent = bot.send_message(call.message.chat.id, "Please send me a picture")
-        bot.register_next_step_handler(sent, read_qr_code)
+        scan_command(call.message)
 
 
 def generate_qr_code(message):
+    if message.text is None:
+        generate_command(message)
+        return
     img = qrcode.make(message.text)
     img.save('out.jpg')
     bot.send_chat_action(message.chat.id, 'upload_photo')
@@ -51,7 +63,10 @@ def generate_qr_code(message):
     os.remove('out.jpg')
 
 
-def read_qr_code(message):
+def scan_qr_code(message):
+    if message.photo is None:
+        scan_command(message)
+        return
     fileID = message.photo[-1].file_id
     file = bot.get_file(fileID)
     d = cv2.QRCodeDetector()
@@ -63,15 +78,5 @@ def read_qr_code(message):
     os.remove('photo.jpg')
     bot.send_message(message.chat.id, val)
 
-
-# @bot.message_handler(commands=['help'])
-# def send_instructions(message):
-#     bot.send_message(message.chat.id, "Please follow these instructions to get help:")
-#
-#
-# @bot.message_handler(regexp="it's soso")
-# def special_welcome(message):
-#     bot.reply_to(message, "Oh it's you \U0001F602")
-#
 
 bot.infinity_polling()
